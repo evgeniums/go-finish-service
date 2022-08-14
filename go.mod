@@ -1,3 +1,3 @@
-module github.com/pseidemann/finish
+module github.com/evgeniums/go-finish-service
 
 go 1.13
