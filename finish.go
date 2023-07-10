@@ -122,6 +122,10 @@ func (f *Finisher) getManSig() chan interface{} {
 //
 //	fin.Add(srv, finish.WithName("internal server"), finish.WithTimeout(5*time.Second))
 func (f *Finisher) Add(srv Server, opts ...Option) {
+
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+
 	keeper := &serverKeeper{
 		srv:     srv,
 		timeout: f.timeout(),
@@ -134,6 +138,30 @@ func (f *Finisher) Add(srv Server, opts ...Option) {
 	}
 
 	f.keepers = append(f.keepers, keeper)
+}
+
+func (f *Finisher) Remove(name string) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+
+	currentLen := len(f.keepers)
+	if currentLen <= 1 {
+		f.keepers = make([]*serverKeeper, 0)
+		return
+	}
+
+	found := false
+	keepers := make([]*serverKeeper, 0, currentLen-1)
+	for _, keeper := range f.keepers {
+		if keeper.name != name {
+			keepers = append(keepers, keeper)
+		} else {
+			found = true
+		}
+	}
+	if found {
+		f.keepers = keepers
+	}
 }
 
 // Wait blocks until one of the shutdown signals is received and then closes all servers with a timeout.
@@ -157,7 +185,12 @@ func (f *Finisher) Wait() {
 
 	f.log().Infof("finish: shutdown signal received")
 
-	for _, keeper := range f.keepers {
+	f.mutex.Lock()
+	keepers := make([]*serverKeeper, len(f.keepers))
+	copy(keepers, f.keepers)
+	f.mutex.Unlock()
+
+	for _, keeper := range keepers {
 		ctx, cancel := context.WithTimeout(context.Background(), keeper.timeout)
 		defer cancel()
 		f.log().Infof("finish: shutting down %s ...", keeper.name)
